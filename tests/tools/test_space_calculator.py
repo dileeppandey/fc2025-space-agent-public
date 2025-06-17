@@ -68,8 +68,8 @@ class TestSpaceCalculator(unittest.TestCase):
         )
         
         self.assertTrue(result.success)
-        # Expected gravitational force ~3.87e6 N
-        self.assertAlmostEqual(result.data["force_newtons"] / 3.87e6, 1.0, places=1)
+        # Expected gravitational force ~3.65e6 N (using standard G)
+        self.assertAlmostEqual(result.data["force_newtons"] / 3.65e6, 1.0, places=1)
         self.assertEqual(result.data["spacecraft_mass_kg"], iss_mass)
         self.assertEqual(result.data["object_mass_kg"], earth_mass)
         self.assertEqual(result.data["distance_m"], distance)

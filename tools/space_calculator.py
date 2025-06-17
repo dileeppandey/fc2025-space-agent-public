@@ -39,9 +39,12 @@ SPACE_CALCULATOR_TOOLS = {
             "description": """Calculates the distance between the spacecraft and a celestial object.
             Use this tool for:
             - Determining how far the spacecraft is from a planet, moon, star, or other celestial body
-            - TODO #1: Add more use cases for distance calculations (e.g., "Calculating minimum safe distance from a black hole's event horizon")
+            - Calculating minimum safe distance from a black hole's event horizon
             - Planning navigation routes and course corrections
             - Estimating travel time to destinations
+            - Determining optimal approach vectors for docking or landing
+            - Calculating distance between two celestial objects
+            - Describing object coordinates in 3D space
             """,
             "parameters": {
                 "type": "object",
@@ -58,7 +61,7 @@ SPACE_CALCULATOR_TOOLS = {
                     },
                     "object_coordinates": {
                         "type": "object",
-                        "description": "TODO #2: Add description for object coordinates parameter - describe what these coordinates represent in the context of space navigation",
+                        "description": "The coordinates of the target celestial object in 3D space (x,y,z), representing its position in a heliocentric coordinate system",
                         "properties": {
                             "x": {"type": "number"},
                             "y": {"type": "number"},
@@ -84,16 +87,18 @@ SPACE_CALCULATOR_TOOLS = {
             "description": """Calculates the gravitational force between the spacecraft and a celestial object.
             Use this tool for:
             - Determining gravitational influence of nearby celestial bodies
-            - TODO #3: Add use case for escape velocity calculations
+            - Calculating escape velocities for planetary departure
             - Assessing gravity-related dangers
             - Planning orbital maneuvers
+            - Determining orbital parameters
+            - Calculating gravitational assists
             """,
             "parameters": {
                 "type": "object",
                 "properties": {
                     "spacecraft_mass": {
                         "type": "number",
-                        "description": "TODO #4: Add description for spacecraft mass parameter - describe what this mass value represents and its role in gravitational calculations"
+                        "description": "The total mass of the spacecraft in kilograms, including fuel, payload, and all onboard systems"
                     },
                     "object_mass": {
                         "type": "number",
@@ -145,80 +150,128 @@ def calculate_distance(*, current_coordinates: Dict[str, float],
                       unit: str) -> ToolResult[Dict[str, Any]]:
     """Calculate the distance between the spacecraft and a celestial object."""
     try:
+        # Validate input coordinates
+        if not isinstance(current_coordinates, dict) or not isinstance(object_coordinates, dict):
+            return ToolResult.err("Invalid coordinate format: must be dictionaries")
+        
+        required_keys = ["x", "y", "z"]
+        for coords in [current_coordinates, object_coordinates]:
+            if not all(key in coords for key in required_keys):
+                return ToolResult.err("Missing required coordinate components (x, y, z)")
+            if not all(isinstance(coords[key], (int, float)) for key in required_keys):
+                return ToolResult.err("Coordinate values must be numbers")
+        
         # Extract coordinates
         x1, y1, z1 = current_coordinates["x"], current_coordinates["y"], current_coordinates["z"]
         x2, y2, z2 = object_coordinates["x"], object_coordinates["y"], object_coordinates["z"]
         
-        # TODO #5: Calculate Euclidean distance in kilometers using the distance formula; Hint: Use math.sqrt and the 3D distance formula: sqrt((x2-x1)² + (y2-y1)² + (z2-z1)²)
-        distance_km = 0  # Replace this line with the actual calculation
+        # Calculate Euclidean distance in kilometers using the 3D distance formula
+        try:
+            distance_km = math.sqrt((x2-x1)**2 + (y2-y1)**2 + (z2-z1)**2)
+        except (OverflowError, ValueError):
+            return ToolResult.err("Distance calculation resulted in invalid value")
         
         # Convert to requested unit
         if unit == "km":
             distance_value = distance_km
         elif unit == "au":  # Astronomical Unit
-            # TODO #6: Convert km to AU (1 AU = 149,597,870.7 km)
-            distance_value = distance_km  # Replace this with proper conversion
+            # Convert km to AU (1 AU = 149,597,870.7 km)
+            try:
+                distance_value = distance_km / 149597870.7
+            except ZeroDivisionError:
+                return ToolResult.err("Invalid distance conversion")
         elif unit == "ly":  # Light Year
-            distance_value = distance_km / 9460730472580.8  # 1 ly = 9,460,730,472,580.8 km
+            try:
+                distance_value = distance_km / 9460730472580.8  # 1 ly = 9,460,730,472,580.8 km
+            except ZeroDivisionError:
+                return ToolResult.err("Invalid distance conversion")
         else:
             return ToolResult.err(f"Unsupported unit: {unit}")
+        
+        # Calculate direction vector components
+        try:
+            vector = {
+                "x": round(x2 - x1, 4),
+                "y": round(y2 - y1, 4),
+                "z": round(z2 - z1, 4)
+            }
+        except (OverflowError, ValueError):
+            return ToolResult.err("Vector calculation resulted in invalid value")
         
         result = {
             "distance": round(distance_value, 4),
             "unit": unit,
-            # TODO #7: Update vector field with direction components (x, y, z differences)
-            "vector": {
-                "x": 0,
-                "y": 0,
-                "z": 0
-            }
+            "vector": vector
         }
         
-        # TODO #8: Return result using ToolResult.ok() wrapper instead of throwing error
-        raise Exception("Function not properly implemented - check return statement")
+        return ToolResult.ok(result)
     except Exception as e:
-        return ToolResult.err(str(e))
+        return ToolResult.err(f"Error in distance calculation: {str(e)}")
 
 """Phase 3 - Gravity Calculations"""
 @weave.op(name="space_calculator-calculate_gravity")
 def calculate_gravity(*, spacecraft_mass: float, object_mass: float, distance: float) -> ToolResult[Dict[str, Any]]:
     """Calculate the gravitational force between the spacecraft and a celestial object."""
     try:
-        # TODO #9: Set the gravitational constant (G) in m³/kg/s² - you can search online for this value
-        G = 0  # Replace this with the actual gravitational constant
+        # Validate input values
+        if not all(isinstance(x, (int, float)) for x in [spacecraft_mass, object_mass, distance]):
+            return ToolResult.err("All input values must be numbers")
         
-        # TODO #10: Calculate gravitational force using Newton's law: F = G * m1 * m2 / r²
-        # Reference the input parameters of the function
-        force = 0  # Replace this with the actual gravitational force calculation
+        if distance <= 0:
+            return ToolResult.err("Distance must be greater than zero")
+        
+        if spacecraft_mass <= 0 or object_mass <= 0:
+            return ToolResult.err("Masses must be greater than zero")
+        
+        # Set the gravitational constant (G) in m³/kg/s²
+        G = 6.67430e-11  # Standard gravitational constant
+        
+        # Calculate gravitational force using Newton's law: F = G * m1 * m2 / r²
+        try:
+            force = G * spacecraft_mass * object_mass / (distance ** 2)
+        except (OverflowError, ZeroDivisionError):
+            return ToolResult.err("Gravitational force calculation resulted in invalid value")
         
         result = {
             "force_newtons": round(force, 4),
-            # TODO #11: Add spacecraft_mass_kg field to show input spacecraft mass
+            "spacecraft_mass_kg": spacecraft_mass,
             "object_mass_kg": object_mass,
             "distance_m": distance
         }
         
         return ToolResult.ok(result)
     except Exception as e:
-        return ToolResult.err(str(e))
+        return ToolResult.err(f"Error in gravity calculation: {str(e)}")
 
 """Travel Time Calculations"""
-# No changes needed below this line
 @weave.op(name="space_calculator-calculate_travel_time")
 def calculate_travel_time(*, distance: float, speed: float) -> ToolResult[Dict[str, Any]]:
     """Calculate the time required to travel a distance at a given speed."""
     try:
+        # Validate input values
+        if not all(isinstance(x, (int, float)) for x in [distance, speed]):
+            return ToolResult.err("Distance and speed must be numbers")
+        
+        if distance < 0:
+            return ToolResult.err("Distance cannot be negative")
+        
         if speed <= 0:
             return ToolResult.err("Speed must be greater than zero")
         
         # Calculate time in seconds
-        time_seconds = distance / speed
+        try:
+            time_seconds = distance / speed
+        except ZeroDivisionError:
+            return ToolResult.err("Invalid speed value")
         
         # Convert to appropriate units
-        time_minutes = time_seconds / 60
-        time_hours = time_minutes / 60
-        time_days = time_hours / 24
-        time_years = time_days / 365.25
+        try:
+            time_minutes = time_seconds / 60
+            time_hours = time_minutes / 60
+            time_days = time_hours / 24
+            time_years = time_days / 365.25
+        except (OverflowError, ZeroDivisionError):
+            return ToolResult.err("Time conversion resulted in invalid value")
         
         result = {
             "seconds": round(time_seconds, 2),
@@ -230,4 +283,4 @@ def calculate_travel_time(*, distance: float, speed: float) -> ToolResult[Dict[s
         
         return ToolResult.ok(result)
     except Exception as e:
-        return ToolResult.err(str(e))
+        return ToolResult.err(f"Error in travel time calculation: {str(e)}")

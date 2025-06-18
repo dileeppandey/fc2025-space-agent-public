@@ -102,12 +102,8 @@ async def main():
     )
 
     # Initialize the scorers
-    
-    #######################################################
-    # DO NOT MODIFY THIS LINE (Feel free to add more scorers)
     quality_scorer = ResponseQualityScorer(model_id=model_id, column_map={"input": "input", "target": "target"})
-    #######################################################
-    
+
     # Extract model ID without version for display name
     model_id_for_display = model_id.split('-v')[0] if '-v' in model_id else model_id
 
@@ -117,10 +113,7 @@ async def main():
         dataset=dataset,
         preprocess_model_input=preprocess_model_input,
         scorers=[
-            #######################################################
-            # DO NOT MODIFY THIS LINE (Feel free to add more scorers)
-            quality_scorer 
-            #######################################################
+            quality_scorer
         ],
         trials=args.trials,
     )

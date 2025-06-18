@@ -22,20 +22,16 @@ VECTOR_SEARCH_TOOLS = {
         "function": {
             "name": "vector_search-encyclopedia_search",
             "description": """
-            TODO #1: Add description for vector search over encyclopedia data.
-            Hint: This tool searches through knowledge using semantic similarity.
-            ENDTODO
-            Use this tool for:
-            - TODO #2: Add use cases for vector search
-            - Finding relevant information based on meaning, not just keywords
-            - Retrieving context for questions about the Aetherian universe
+            Performs semantic search over encyclopedia data using vector embeddings.
+            This tool enables searching through knowledge using semantic similarity rather than just keyword matching.
+            It uses Amazon Titan V2 embeddings to understand the meaning and context of queries.
             """,
             "parameters": {
                 "type": "object",
                 "properties": {
                     "message": {
                         "type": "string",
-                        "description": "TODO #3: Add description for the search query parameter"
+                        "description": "The search query to find semantically similar content in the encyclopedia"
                     },
                     "top_k": {
                         "type": "integer",
@@ -109,11 +105,11 @@ def _get_embedding(text: str) -> np.ndarray:
         raise RuntimeError("AWS Bedrock client not initialized. Please configure AWS credentials.")
     
     try:
-        # TODO #4: Create request body for Titan V2 embedding model
-        # Hint: Use inputText, dimensions, normalize, and embeddingTypes fields
         request_body = json.dumps({
             "inputText": text.strip(),
-            # TODO Add required fields for embedding request
+            "dimensions": EMBEDDING_DIMENSION,
+            "normalize": True,
+            "embeddingTypes": ["float"]
         })
         
         # Invoke the Bedrock model
@@ -127,16 +123,16 @@ def _get_embedding(text: str) -> np.ndarray:
         # Parse the response
         response_body = json.loads(response.get('body').read())
         
-        # TODO #5: Extract embedding vector from the response
-        # Hint: Check for 'embeddingsByType' with 'float' key, or fallback to 'embedding'
-        embedding_vector = None  # Replace with proper extraction logic
-        
-        if embedding_vector is None:
+        # Extract embedding vector from the response
+        if 'embeddingsByType' in response_body and 'float' in response_body['embeddingsByType']:
+            embedding_vector = response_body['embeddingsByType']['float']
+        elif 'embedding' in response_body:
+            embedding_vector = response_body['embedding']
+        else:
             raise ValueError("No embedding found in Bedrock response")
         
-        # TODO #6: Convert to numpy array and validate dimension
-        # Hint: Use np.array with dtype=np.float32
-        final_embedding = None  # Replace with numpy conversion
+        # Convert to numpy array and validate dimension
+        final_embedding = np.array(embedding_vector, dtype=np.float32)
         
         if final_embedding.shape[0] != EMBEDDING_DIMENSION:
             raise ValueError(f"Embedding dimension {final_embedding.shape[0]} does not match expected dimension {EMBEDDING_DIMENSION}")
@@ -222,12 +218,15 @@ def initialize_vector_db_from_markdown(markdown_filepath: str, max_workers: int 
 
 def _cosine_similarity(vec1: np.ndarray, vec2: np.ndarray) -> float:
     """Calculates cosine similarity between two numpy vectors."""
-    # Titan V2 embeddings are L2 normalized, so dot product is cosine similarity
-    # For robustness if somehow not normalized, or for general use:
-    # TODO #7: Implement cosine similarity calculation
     # Handle edge case: if either vector has zero norm, return 0.0
+    norm1 = np.linalg.norm(vec1)
+    norm2 = np.linalg.norm(vec2)
+    if norm1 == 0 or norm2 == 0:
+        return 0.0
+    
     # For normalized vectors, dot product = cosine similarity
-    return 0.0  # Replace with actual calculation
+    # For non-normalized vectors, we need to divide by the product of norms
+    return np.dot(vec1, vec2) / (norm1 * norm2)
 
 @weave.op(name="vector_search-encyclopedia_search")
 def encyclopedia_search(*, message: str, top_k: int = 5) -> ToolResult[List[Dict[str, Any]]]:
@@ -244,36 +243,31 @@ def encyclopedia_search(*, message: str, top_k: int = 5) -> ToolResult[List[Dict
         return ToolResult.ok("Vector database is empty. Initialize it first.")
 
     try:
-        # TODO #8: Get embedding for the search query
-        query_embedding = None  # Replace with actual embedding generation
+        # Get embedding for the search query
+        query_embedding = _get_embedding(message)
         
         results_with_scores = []
         for entry in _VECTOR_DATABASE_STORE:
             stored_embedding = entry.get("embedding")
             if isinstance(stored_embedding, np.ndarray):
-                # TODO #9: Calculate similarity between query and stored embeddings
-                similarity = 0.0  # Replace with similarity calculation
+                similarity = _cosine_similarity(query_embedding, stored_embedding)
                 
-                # TODO #10: Create result entry with text, chunk_id, and similarity score
                 result_entry = {
                     "text": entry["text"],
-                    # TODO: Add chunk_id field
-                    # TODO: Add score field
+                    "chunk_id": entry["chunk_id"],
+                    "score": similarity
                 }
                 results_with_scores.append(result_entry)
             else:
                 print(f"Warning: Skipping entry due to missing or invalid embedding: {entry.get('chunk_id')}")
 
-        # TODO #11: Sort results by similarity score in descending order
-        # Hint: Use sort() with key=lambda and reverse=True
-        
-        top_results = results_with_scores[:top_k]
+        # Sort results by similarity score in descending order
+        top_results = sorted(results_with_scores, key=lambda x: x["score"], reverse=True)[:top_k]
         
         if not top_results:
             return ToolResult.ok_empty(f"No relevant information found for: '{message}'")
             
-        # TODO #12: Return results using ToolResult.ok() instead of throwing error
-        raise Exception("Vector search not properly implemented - check return statement")
+        return ToolResult.ok(top_results)
         
     except Exception as e:
         return ToolResult.err(f"An error occurred during vector search: {str(e)}")
